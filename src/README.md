@@ -5,5 +5,3 @@
 - future_examples - some simple Futures
 - future_combinators - Futures that allow chaining two Futures together into a single task
 - err - utility functions for handling errors of standard functions and system calls
-- debug - utility function for debug operation logging
-- waker - structure used to "wake" Futures, that have been waiting for an I/O event
