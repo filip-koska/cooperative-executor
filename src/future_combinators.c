@@ -206,6 +206,7 @@ static FutureState future_select_sub_progress(Future *base, Mio *mio, Waker wake
             waker_wake(&self->parent_waker);
         }
     }
+    free(self);
     return FUTURE_PENDING;
 }
 
@@ -242,20 +243,9 @@ static FutureState future_select_progress(Future *base, Mio *mio, Waker waker) {
     }
     SelectSubFuture *ssf1 = (SelectSubFuture*)self->fut1;
     SelectSubFuture *ssf2 = (SelectSubFuture*)self->fut2;
-    if (self->which_completed == SELECT_FAILED_BOTH) {
-        free(ssf1);
-        free(ssf2);
+    if (self->which_completed == SELECT_FAILED_BOTH)
         return FUTURE_FAILURE;
-    }
-    if (self->which_completed == SELECT_COMPLETED_FUT1) {
-        free(ssf1);
-        return FUTURE_COMPLETED;
-    }
-    if (self->which_completed == SELECT_COMPLETED_FUT2) {
-        free(ssf2);
-        return FUTURE_COMPLETED;
-    }
-    return FUTURE_PENDING;
+    return FUTURE_COMPLETED;
 }
 
 SelectFuture future_select(Future *fut1, Future *fut2) {
