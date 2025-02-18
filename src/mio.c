@@ -11,27 +11,24 @@
 #include "waker.h"
 #include "err.h"
 
+// Structure to handle OS communication and descriptor tracking
+
 // Maximum number of events to handle per epoll_wait call.
 #define MAX_EVENTS 64
 
+// Maximum number of descriptors that can be registered in epoll instance
 #define MAX_DESCRIPTORS 1048577
 
 struct Mio {
-    // TODO: add required fields
-    struct epoll_event dummy;
+    struct epoll_event dummy; // dummy epoll_event for portability
+    // so that a non-NULL pointer can be passed to epoll_ctl with EPOLL_CTL_DEL option
     Executor *executor;
-    int epfd;
-    // Waker wakers[MAX_DESCRIPTORS];
-    // struct epoll_event fd_data[MAX_DESCRIPTORS];
-    struct epoll_event events[MAX_EVENTS];
-    int n_descriptors;
-    // Waker to_wake[MAX_EVENTS];
-    // int errcodes[MAX_EVENTS];
+    int epfd; // descriptor of epoll instance
+    struct epoll_event events[MAX_EVENTS]; // helper array for epoll_wait
+    int n_descriptors; // number of registered fds
 };
 
-// TODO: delete this once not needed.
-// #define UNIMPLEMENTED (exit(42))
-
+// Create a new Mio instance
 Mio* mio_create(Executor* executor) {
     Mio *ret = (Mio*)malloc(sizeof(Mio));
     if (!ret)
@@ -43,24 +40,19 @@ Mio* mio_create(Executor* executor) {
     return ret;
 }
 
+// Destroy a Mio instance
 void mio_destroy(Mio* mio) {
     close(mio->epfd);
     free(mio);
 }
 
+// Register a new fd in epoll instance, or modify the events associated with one
 int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
 {
     debug("Registering (in Mio = %p) fd = %d with\n", mio, fd);
 
     ++mio->n_descriptors;
-    // mio->fd_data[fd].events = events;
-    // mio->fd_data[fd].data.fd = fd;
-    // mio->wakers[fd] = waker;
-    // int create_res = epoll_ctl(mio->epfd, EPOLL_CTL_ADD, fd, &mio->fd_data[fd]);
-    // if (create_res == -1 && errno == EEXIST) { // attempt to change events associated with descriptor
-    //     --mio->n_descriptors;
-    //     create_res = epoll_ctl(mio->epfd, EPOLL_CTL_MOD, fd, &mio->fd_data[fd]);
-    // }
+
     struct epoll_event ee;
     ee.events = events;
     ee.data.ptr = (void*)waker.future;
@@ -72,6 +64,7 @@ int mio_register(Mio* mio, int fd, uint32_t events, Waker waker)
     return create_res;
 }
 
+// Unregister fd from Mio instance
 int mio_unregister(Mio* mio, int fd)
 {
     debug("Unregistering (from Mio = %p) fd = %d\n", mio, fd);
@@ -82,6 +75,7 @@ int mio_unregister(Mio* mio, int fd)
     return ret;
 }
 
+// Wait for available I/O operations on registered fds
 void mio_poll(Mio* mio)
 {
     debug("Mio (%p) polling\n", mio);
