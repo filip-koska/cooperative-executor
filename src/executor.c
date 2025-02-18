@@ -11,14 +11,13 @@
 #include "waker.h"
 #include "err.h"
 
-/**
- * @brief Structure to represent the current-thread executor.
- */
+// Structure to represent the current-thread executor.
 
 
 typedef struct Queue Queue;
 
 /**
+ * Cyclic buffer task queue
  * Semantics:
  * The queue is valid and empty iff size == 0;
  * If size == 0, head and tail point to the same unspecified free index;
@@ -26,7 +25,7 @@ typedef struct Queue Queue;
  * and tail is the index of the last element.
  */
 struct Queue {
-    Future **data;
+    Future **data; // internal array
     size_t max_size;
     size_t head;
     size_t tail;
@@ -72,14 +71,11 @@ void queue_destroy(Queue *queue) {
 
 
 struct Executor {
-    // TODO: add your needed fields
     Queue queue;
     Mio *mio;
     size_t needed_tasks;
 };
 
-// TODO: delete this once not needed.
-#define UNIMPLEMENTED (exit(42))
 
 Executor* executor_create(size_t max_queue_size) {
     Executor *executor = (Executor*)malloc(sizeof(Executor));
@@ -93,11 +89,13 @@ Executor* executor_create(size_t max_queue_size) {
     return executor;
 }
 
+// Wake a task that had already been spawned
 void waker_wake(Waker* waker) {
     Executor *tmp = (Executor*)(waker->executor);
     queue_enqueue_future(&tmp->queue, waker->future);
 }
 
+// Spawn a new independent task and update needeed task counter
 void executor_spawn(Executor* executor, Future* fut) {
     fut->is_active = true;
     queue_enqueue_future(&executor->queue, fut);
@@ -106,6 +104,7 @@ void executor_spawn(Executor* executor, Future* fut) {
 
 void executor_run(Executor* executor) {
     int finished = 0;
+    // Try to progress tasks until all spawned tasks have been finished
     while (finished < executor->needed_tasks) {
         if (!queue_empty(&executor->queue)) {
             Future *fut = queue_dequeue_future(&executor->queue);
@@ -113,31 +112,24 @@ void executor_run(Executor* executor) {
             waker.executor = (void*)executor;
             waker.future = fut;
             FutureState fs = (*fut->progress)(fut, executor->mio, waker);
-            if (fs != FUTURE_PENDING) { // CHANGE: changed from == || == to != 
+            if (fs != FUTURE_PENDING) { // future finished computation
                 ++finished;
                 fut->is_active = false;
             }
-        } else {
+        } else { // No active tasks but some are still pending
             mio_poll(executor->mio);
         }
     }
 }
 
 void executor_destroy(Executor* executor) {
-    /**
-     * EXPERIMENTAL CODE
-     * POTENTIALLY INCORRECT
-     * ASSUMES THE ONLY FUTURES LEFT ON THE QUEUE AFTER EXECUTOR_RUN
-     * ARE UNNEEDED SUBTASKS OF SELECTFUTURES
-     */
+    // All Futures remaining are unneded subtasks of SelectFutures;
+    // Only now can we free their wrappers
     while (!queue_empty(&executor->queue)) {
         Future *fut = queue_dequeue_future(&executor->queue);
         Waker waker;
         (*fut->progress)(fut, NULL, waker);
     }
-     /**
-      * END OF EXPERIMENTAL CODE
-      */
     queue_destroy(&executor->queue);
     mio_destroy(executor->mio);
     free(executor);
