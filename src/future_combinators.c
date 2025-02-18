@@ -38,8 +38,7 @@ static FutureState future_then_progress(Future *base, Mio *mio, Waker waker) {
     return FUTURE_PENDING;
 }
 
-ThenFuture future_then(Future* fut1, Future* fut2)
-{
+ThenFuture future_then(Future* fut1, Future* fut2) {
     return (ThenFuture) {
         .base = future_create(future_then_progress),
         .fut1 = fut1,
@@ -61,6 +60,7 @@ static FutureState future_join_sub_progress(Future *base, Mio *mio, Waker waker)
     FutureState ret = (*self->subtask->progress)(self->subtask, mio, waker);
     if (ret == FUTURE_PENDING)
         return FUTURE_PENDING;
+    // only the last finished subtask wakes the parent Future
     if (self->which == FIRST_SUBTASK) { // code for subtask 1
         self->parent->result.fut1.errcode = self->subtask->errcode;
         self->parent->result.fut1.ok = self->subtask->ok;
@@ -96,7 +96,6 @@ static FutureState future_join_sub_progress(Future *base, Mio *mio, Waker waker)
                 waker_wake(&self->parent_waker);
         }
     }
-    // free(self);
     return ret;
 }
 
@@ -154,13 +153,14 @@ JoinFuture future_join(Future *fut1, Future *fut2) {
     };
 }
 
+// Wrapper struct for subtask of SelectFuture
 typedef struct SelectSubFuture {
     Future base;
-    Future *subtask;
-    struct SelectSubFuture *other;
+    Future *subtask; // pointer to actual subtask
+    struct SelectSubFuture *other; // pointer to the other subtask
     SelectFuture *parent;
-    int which;
-    bool unneeded;
+    int which; // number of subtask (1 or 2)
+    bool unneeded; // had the other subtask returned COMPLETED
     Waker parent_waker;
 } SelectSubFuture;
 
